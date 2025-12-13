@@ -1,0 +1,24 @@
+.upload-area {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.file-label {
+  padding: 0.75rem 1.5rem;
+  background: #f8f9fa;
+  border: 2px dashed #dee2e6;
+  border-radius: 6px;
+  cursor: pointer;
+  flex: 1;
+  text-align: center;
+  color: #666;
+  transition: all 0.3s ease;
+}
+
+.file-label:hover {
+  background: #e9ecef;
+  border-color: #667eea;
+}
+

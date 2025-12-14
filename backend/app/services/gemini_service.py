@@ -27,37 +27,68 @@ def parse_exam_text(text: str) -> List[QuestionAnswer]:
     if not settings.GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY not configured")
     
+    # Log the input text for debugging (first 1000 chars)
+    logger.info(f"Parsing exam text (length: {len(text)} chars)")
+    logger.debug(f"Exam text preview: {text[:1000]}")
+    
+    # Check if text is too short or empty
+    if not text or len(text.strip()) < 20:
+        logger.warning(f"Exam text is too short: {len(text)} characters")
+        raise ValueError("Exam text is too short or empty. Please ensure the file contains readable exam content.")
+    
     prompt = f"""You are an expert at parsing exam documents. Extract all questions and their correct answers from the following exam text.
 
 EXAM TEXT:
 {text}
 
 INSTRUCTIONS:
-1. Identify all questions in the exam
-2. For each question, extract the question text and its correct answer
-3. Return ONLY a valid JSON array in this exact format:
+1. Identify ALL questions in the exam (look for numbered questions, question marks, or clear question patterns)
+2. For each question, extract the complete question text and its correct answer
+3. The exam may be in Hebrew, English, or mixed languages - parse it accordingly
+4. Return ONLY a valid JSON array in this exact format:
 [
   {{
     "question": "Question text here",
     "correct_answer": "Correct answer text here"
+  }},
+  {{
+    "question": "Another question",
+    "correct_answer": "Another answer"
   }}
 ]
 
 IMPORTANT:
-- Return ONLY the JSON array, no additional text
-- Ensure all questions are numbered or clearly separated
-- If a question has multiple parts, include all parts in the question text
-- Be precise with the correct answers
-- If you cannot parse the exam, return an empty array: []
+- Return ONLY the JSON array, no additional text before or after
+- Look for questions even if they're not perfectly formatted
+- Questions may be numbered (1., 2., Question 1, etc.) or unnumbered
+- Answers may appear after each question or at the end of the exam
+- If a question has multiple parts (a, b, c), you can either:
+  * Include all parts in one question text, OR
+  * Create separate question entries for each part
+- Be flexible with formatting - extract questions even if the format is imperfect
+- If you find at least one question, return it. Only return empty array [] if you truly cannot find ANY questions.
 
 JSON OUTPUT:"""
 
     try:
         model = genai.GenerativeModel(settings.GEMINI_MODEL)
-        response = model.generate_content(prompt)
+        logger.info(f"Sending request to Gemini API using model: {settings.GEMINI_MODEL}")
+        
+        # Configure generation with timeout and retry
+        generation_config = genai.types.GenerationConfig(
+            temperature=0.1,
+            max_output_tokens=8192,
+        )
+        
+        response = model.generate_content(
+            prompt,
+            generation_config=generation_config,
+            request_options={'timeout': 30}
+        )
         
         # Extract JSON from response
         response_text = response.text.strip()
+        logger.debug(f"Raw Gemini response (first 500 chars): {response_text[:500]}")
         
         # Remove markdown code blocks if present
         if response_text.startswith("```json"):
@@ -68,29 +99,49 @@ JSON OUTPUT:"""
             response_text = response_text[:-3]
         response_text = response_text.strip()
         
+        # Try to extract JSON if there's extra text
+        # Look for JSON array pattern
+        json_start = response_text.find('[')
+        json_end = response_text.rfind(']')
+        if json_start != -1 and json_end != -1 and json_end > json_start:
+            response_text = response_text[json_start:json_end+1]
+        
         # Parse JSON
         parsed_data = json.loads(response_text)
         
         if not isinstance(parsed_data, list):
+            logger.error(f"Expected JSON array but got: {type(parsed_data)}")
             raise ValueError("Expected JSON array")
         
+        logger.info(f"Gemini returned {len(parsed_data)} items in JSON array")
+        
         questions = []
-        for item in parsed_data:
+        for i, item in enumerate(parsed_data):
+            if not isinstance(item, dict):
+                logger.warning(f"Item {i} is not a dictionary, skipping")
+                continue
             if "question" in item and "correct_answer" in item:
                 questions.append(QuestionAnswer(
-                    question=item["question"],
-                    correct_answer=item["correct_answer"]
+                    question=str(item["question"]).strip(),
+                    correct_answer=str(item["correct_answer"]).strip()
                 ))
+            else:
+                logger.warning(f"Item {i} missing 'question' or 'correct_answer' keys: {item.keys()}")
         
-        logger.info(f"Parsed {len(questions)} questions from exam")
+        if len(questions) == 0 and len(parsed_data) > 0:
+            logger.error(f"Parsed {len(parsed_data)} items but none had valid question/answer format")
+            logger.error(f"Sample item: {parsed_data[0] if parsed_data else 'N/A'}")
+            raise ValueError("Gemini returned data but no valid questions were found. The exam format may not be recognized.")
+        
+        logger.info(f"Successfully parsed {len(questions)} questions from exam")
         return questions
         
     except json.JSONDecodeError as e:
         logger.error(f"JSON parsing error: {str(e)}")
-        logger.error(f"Response text: {response_text[:500]}")
-        raise ValueError(f"Failed to parse exam: Invalid JSON response from AI")
+        logger.error(f"Response text (first 1000 chars): {response_text[:1000]}")
+        raise ValueError(f"Failed to parse exam: Invalid JSON response from AI. Response: {response_text[:200]}")
     except Exception as e:
-        logger.error(f"Error parsing exam with Gemini: {str(e)}")
+        logger.error(f"Error parsing exam with Gemini: {str(e)}", exc_info=True)
         raise ValueError(f"Failed to parse exam: {str(e)}")
 
 

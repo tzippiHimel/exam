@@ -84,6 +84,26 @@ function App() {
 function ParseExam({ apiBaseUrl, examId, onParsed }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [extractedText, setExtractedText] = useState(null);
+  const [showText, setShowText] = useState(false);
+  const [loadingText, setLoadingText] = useState(false);
+
+  const handleViewText = async () => {
+    setLoadingText(true);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/exams/${examId}/text`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch extracted text');
+      }
+      const data = await response.json();
+      setExtractedText(data);
+      setShowText(true);
+    } catch (err) {
+      setError('Failed to load extracted text: ' + err.message);
+    } finally {
+      setLoadingText(false);
+    }
+  };
 
   const handleParse = async () => {
     setLoading(true);
@@ -113,14 +133,65 @@ function ParseExam({ apiBaseUrl, examId, onParsed }) {
 
   return (
     <div className="parse-container">
-      <p>Click the button below to parse the uploaded exam into questions and answers.</p>
-      <button
-        onClick={handleParse}
-        disabled={loading}
-        className="btn btn-primary"
-      >
-        {loading ? 'Parsing...' : 'Parse Exam'}
-      </button>
+      <h2>Step 2: Parse Exam</h2>
+      <p style={{ marginBottom: '1.5rem', color: '#666' }}>
+        Click the button below to parse the uploaded exam into questions and answers.
+      </p>
+      
+      <div style={{ marginBottom: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        <button
+          onClick={handleViewText}
+          disabled={loadingText}
+          className="btn btn-secondary"
+        >
+          {loadingText ? 'Loading...' : '👁️ View Extracted Text'}
+        </button>
+        <button
+          onClick={handleParse}
+          disabled={loading}
+          className="btn btn-primary"
+        >
+          {loading ? 'Parsing...' : 'Parse Exam'}
+        </button>
+      </div>
+
+      {showText && extractedText && (
+        <div style={{
+          marginTop: '1.5rem',
+          padding: '1rem',
+          backgroundColor: '#f5f5f5',
+          borderRadius: '8px',
+          border: '1px solid #ddd'
+        }}>
+          <h3 style={{ marginTop: 0 }}>Extracted Text Preview</h3>
+          <p style={{ fontSize: '0.9rem', color: '#666', marginBottom: '0.5rem' }}>
+            <strong>Text Length:</strong> {extractedText.text_length} characters
+          </p>
+          <div style={{
+            maxHeight: '400px',
+            overflow: 'auto',
+            backgroundColor: 'white',
+            padding: '1rem',
+            borderRadius: '4px',
+            border: '1px solid #ccc',
+            whiteSpace: 'pre-wrap',
+            fontFamily: 'monospace',
+            fontSize: '0.9rem',
+            direction: 'ltr',
+            textAlign: 'left'
+          }}>
+            {extractedText.text || extractedText.preview}
+          </div>
+          <button
+            onClick={() => setShowText(false)}
+            className="btn btn-secondary"
+            style={{ marginTop: '0.5rem' }}
+          >
+            Hide Text
+          </button>
+        </div>
+      )}
+
       {error && <div className="error-message">{error}</div>}
     </div>
   );

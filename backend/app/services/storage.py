@@ -2,7 +2,7 @@
 In-memory storage for exams and results.
 """
 import uuid
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from app.models import QuestionAnswer
 
 # In-memory storage

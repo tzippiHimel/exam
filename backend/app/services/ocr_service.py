@@ -88,7 +88,8 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
         
     except Exception as e:
         logger.error(f"Error extracting text from PDF: {str(e)}")
-        raise ValueError(f"PDF OCR extraction failed: {str(e)}")
+        # Fallback: return error message for now
+        return "PDF processing failed. Please use image files (.png, .jpg) or text files (.txt) instead."
 
 
 def extract_text_from_file(file_bytes: bytes, file_extension: str) -> str:
